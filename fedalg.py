@@ -671,7 +671,7 @@ class DyFedImp(fl.server.strategy.Strategy):
         self.min_evaluate_clients = min_evaluate_clients
         self.min_available_clients = min_available_clients
         self.learning_rate = learning_rate
-        self.tems = 1-((np.std(entropies)+10**(-6))/(np.mean(entropies)+10**(-6)))
+        self.tems = [1-((np.std(entropies)+10**(-6))/(np.mean(entropies)+10**(-6))) for _ in range(self.num_clients)]
         self.current_parameters = current_parameters
         self.decay_rate = 0.995
         self.iids = iids
@@ -710,20 +710,13 @@ class DyFedImp(fl.server.strategy.Strategy):
         results: List[Tuple[ClientProxy, FitRes]],
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-    	"""Aggregate fit results using weighted average."""
-        if server_round == 1:
-            decay = 1
-        else:
-            decay = self.tems ** (1 / (server_round - 1))
+        """Aggregate fit results using weighted average."""
 
-        weights_results = [
-            (
-                parameters_to_ndarrays(fit_res.parameters),
-                np.log(fit_res.num_examples) * np.exp(self.entropies[int(fit_res.metrics["id"])] / self.tems * decay)
-            )
-            for (_, fit_res) in results
-        ]
-
+        weights_results = [(parameters_to_ndarrays(fit_res.parameters),
+                                np.log(fit_res.num_examples) * np.exp(self.entropies[int(fit_res.metrics["id"])]/self.tems[int(fit_res.metrics["id"])]))
+                                for (_, fit_res) in results]
+                                
+        self.tems = [tem / 0.995**(1/tem) for entropie, tem in zip(self.entropies, self.tems)]
         self.current_parameters = ndarrays_to_parameters(aggregate(weights_results))
         metrics_aggregated = {}
 
@@ -739,7 +732,6 @@ class DyFedImp(fl.server.strategy.Strategy):
         self.result["train_accuracy"].append(accuracy)
 
         return self.current_parameters, metrics_aggregated
-
 
     def configure_evaluate(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
